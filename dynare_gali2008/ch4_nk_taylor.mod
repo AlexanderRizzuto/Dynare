@@ -1,16 +1,14 @@
 % Author: Alexander Rizzuto
 % Date: July 15, 2023
 % This code solves the basic NK workhorse model presented in chapters 3-4 
-% of Galì (2008), with the least number of equations and parameters, 
-% computes the IRFs and performs global stability analysis.
+% of Galì (2008), computes the IRFs and performs global stability analysis.
 % The model allows for two shocks (technology and monetary policy) and for
 % three Taylor rules: a simple one (p.50), an aggressive one (p.77) and a 
 % forward-looking one (79). 
-% Note: rates not annualized (IRFs not directly comparable to those in the 
-% book). 
-% Note: Taylor rules are commented out so as to run this .mod file from
-% ch4_nk_taylor_compare.m. To run it on its own uncomment one of the Taylor 
-% Rules.
+% Note: rates are annualized (IRFs comparable to those in the book). 
+% Note: Taylor rules are commented out so as to run this .mod file from 
+% ch4_nk_taylor_minimal_compare.m. To run it on its own uncomment one of 
+% the Taylor Rules.
 
 close all
 
@@ -23,9 +21,25 @@ var
     pi      ${\pi}$ (long_name='Inflation Rate')
     ygap    ${\tilde y}$ (long_name='Output Gap')
     i       ${i}$ (long_name='Nominal Interest Rate')
+    r       ${r}$ (long_name='Real Interest Rate')
     r_n     ${r^{n}}$ (long_name='Natural Rate of Interest')
     a       ${a}$ (long_name='Technology')
     ni      ${\nu}$ (long_name='Exogenous Component in Taylor Rule')
+
+    pi_a    ${\pi^a}$ (long_name='Ann. Inflation Rate')
+    i_a     ${i^a}$ (long_name='Ann. Nominal Interest Rate')
+    r_a     ${r^a}$ (long_name='Real Interest Rate')
+    r_n_a   ${r^{n,a}}$ (long_name='Ann. Natural Rate of Interest')
+
+    w_r     ${w^real}$ (long_name='Real Wage')
+    n       $n$ (long_name='Employment')
+    c       ${c}$ (long_name='Consumption')
+    y       $y$ (long_name='Output')
+    y_n     $y^n$ (long_name='Natural Output')
+    m_r     $m^r$ (long_name='Real Money')
+    g_m_r   $\Delta m$ (long_name='Real Money Growth')
+    g_m_r_a $\Delta m$ (long_name='Ann. Real Money Growth')
+
 ;
 % ---------------- exogenous variables (2) ----------------
 varexo 
@@ -45,6 +59,8 @@ parameters
     p_phi       ${\phi}$ (long_name='Frisch Elasticity of Labor Supply')
     p_eps       ${\varepsilon}$ (long_name='Demand Elasticity')
     p_theta     ${\theta}$ (long_name='Degree of Price Stickiness')
+    p_alpha     ${\alpha}$ (long_name='Capital Share')
+    p_eta       $\eta$ (long_name='Semi-Elasticity of Money Demand')
 ;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -57,6 +73,7 @@ rho_a    = .9;  % (p.55)
 phi_pi   = 1.5; % (p.52)
 phi_y    = .5/4;% (p.52)
 rho_ni   = .5;  % (p.52)
+p_eta    = 4;   % (p.52)
 
 % ---------------- derived and auxiliary ----------------
 p_phi    = 1;   % (p.52)
@@ -81,6 +98,8 @@ model;
     ygap = - 1/p_sigma*(i - pi(+1) - r_n) + ygap(+1); % vars: ygap i pi r_n ygap; params: p_sigma 
     [name='Natural Rate of Interest'] % (Ch.3, eq.23; -rho) 
     r_n  = p_sigma*psi_n_ya*(a(+1)-a);          % vars: r_n a; params: p_sigma psi_n_ya
+    [name='Real Interest Rate']
+    r    = i - pi(+1);                          % vars: r i pi
     [name='Technology - AR1 Process'] % (Ch.3, eq.28)
     a    = rho_a*a(-1) + eps_a;                 % vars: a; exovars: eps_a; params: rho_a
     % ---------------- simple Taylor rule (Ch.3, eq.25) ----------------
@@ -95,6 +114,34 @@ model;
     % ---------------- exogenous m.p. component AR1 (p.50) ----------------
     [name='Monetary Policy Shock - AR1']
     ni   = rho_ni*ni(-1) + eps_ni;  
+    % ---------------- annualized rates ----------------
+    [name='Annualized Nominal Interest Rate']
+    i_a  = i*4;
+    [name='Annualized Real Interest Rate']
+    r_a  = r*4;
+    [name='Annualized Natural Rate of Interest']
+    r_n_a  = r_n*4;
+    [name='Annualized Inflation Rate']
+    pi_a = pi*4;
+    [name='Annualized Real Money Growth']
+    g_m_r_a = g_m_r*4;
+
+    % --- other
+    [name='Goods Market Clearing']
+    c = y;
+    [name='Labor Supply']
+    w_r = p_sigma*c + p_phi*n;
+    [name='Production Function']
+    y = a + (1-p_alpha)*n;
+    [name='Natural Output']
+    y_n = psi_n_ya*a;
+    [name='Output Gap']
+    ygap = y-y_n;
+    [name='Ad-Hoc Money Demand']
+    m_r = y - p_eta*i;
+    [name='Real Money Growth']
+    g_m_r = m_r - m_r(-1);
+    
 
 end;
 
@@ -115,7 +162,8 @@ shocks;
         var eps_ni = .25^2; 
         var eps_a = 0; 
 end; 
-stoch_simul(order = 1,irf=12,irf_plot_threshold =0,graph_format = pdf);
+stoch_simul(order = 1,irf=12,irf_plot_threshold =0,graph_format = pdf) ygap 
+y pi_a i_a r_a r_n_a n w_r  a ni m_r g_m_r_a;
 % approx. order: 1; generate 12-period IRFs for all vars; plot even if IRF 
 % equal to zero
 
@@ -124,7 +172,8 @@ shocks;
         var eps_ni = 0; 
         var eps_a = 1^2; 
 end; 
-stoch_simul(order = 1,irf=12,irf_plot_threshold =0,graph_format = pdf); 
+stoch_simul(order = 1,irf=12,irf_plot_threshold =0,graph_format = pdf) ygap 
+y pi_a i_a r_a r_n_a n w_r a ni m_r g_m_r_a;
 % approx. order: 1; generate 12-period IRFs for all vars; plot even if IRF 
 % equal to zero
 

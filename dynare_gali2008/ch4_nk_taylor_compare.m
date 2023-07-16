@@ -1,13 +1,16 @@
 % Author: Alexander Rizzuto
 % Date: July 16, 2023
-% This code runs the Dynare code ch4_nk_taylor_minimal.mod (minimalistic
-% implementation of the NK model with Taylor rule found in Gali (2008),
-% Chapters 3 and 4) for various model variants (three Taylor rules) and
-% compares their IRFs to a productivity (eps_a) and a m.p. shock (ni). The
-% output will be stored in three different subfolders, each named after the
-% Taylor rule: taylor1 is the simple Taylor rule (Ch.3, eq.25), taylor2 is
-% the aggressive Taylor rule (Ch.4, eq.8), taylor3 is forward-looking
-% Taylor rule (Ch.4, eq.8). Note: rates are not annualized.
+% This code runs the Dynare codes ch4_nk_taylor_minimal.mod (minimalistic
+% implementation) or ch4_nk_taylor.mod for various variants (three Taylor 
+% rules) of the NK model with Taylor rule in Chapters 3/4 of Gali (2008),
+% compares their IRFs to a technology (eps_a) and a m.p. shock (ni), and 
+% performs global stability analysis. A summary of the results will be 
+% stored in results.tex, the remainder in three different subfolders named 
+% after the Taylor rules: taylor1 is the simple Taylor rule (Ch.3, eq.25), 
+% taylor2 the "aggressive" one (Ch.4, eq.8), taylor3 the forward-looking
+% one (Ch.4, eq.8).
+% Note: In line 26 one can decide whether to run ch4_nk_taylor.mod or
+% ch4_nk_taylor_minimal.mod.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Housekeeping %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -22,7 +25,8 @@ close all;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Specify the name of the mod file, including the extension
-original_path = 'ch4_nk_taylor_minimal.mod';
+original_path = 'ch4_nk_taylor.mod'; 
+%original_path = 'ch4_nk_taylor_minimal.mod';
 
 % Model variants - Set the suffix of the output files appended to the
 % original mod file name 1xN cell (N being the number of model variants)
@@ -92,20 +96,32 @@ for idx = 1:n_compare
     filenames{idx} = [original_name, '_', suffix_names{idx}, '/Output/', original_name, '_', suffix_names{idx}, '_results.mat'];
 end
 
-% Specify the shocks
-shocknames = M_.exo_names;
-varlongnames = M_.endo_names_long;
-shocklongnames = M_.exo_names_long;
-shocktexnames = M_.exo_names_tex;
+% Combine the shock names and keep only those for which there are irfs
+shock_names_n = numel(M_.exo_names);
+shock_names = cell(shock_names_n, 3);
+shock_names(:, 1) = M_.exo_names;
+shock_names(:, 2) = M_.exo_names_long;
+shock_names(:, 3) = M_.exo_names_tex;
+shock_names_irfs  = unique(extractAfter(fieldnames(oo_.irfs), '_eps_'));
+idx_common = ismember(extractAfter(shock_names(:, 1),'eps_'), shock_names_irfs);
+shock_names = shock_names(idx_common, :);
+
+
+% Combine the endo names
+endo_names_n = numel(M_.endo_names);
+endo_names = cell(endo_names_n, 3);
+endo_names(:, 1) = M_.endo_names;
+endo_names(:, 2) = M_.endo_names_long;
+endo_names(:, 3) = M_.endo_names_tex;
 
 % Set the vertical spacing between sgtitle and plots
 vertical_spacing = 0.1; % Adjust this value as needed
 linestyles = {'-', '--', ':', '-.'}; % Add more linestyles if needed
 
 % Iterate over the shocks
-for s = 1:numel(shocknames)
-    shockname = shocknames{s};
-    shocklongname = shocklongnames{s};
+for s = 1:size(shock_names,1)
+    shock_name = shock_names{s,1};
+    shock_longname = shock_names{s,2};
 
     % Create a figure with subplots
     figure;
@@ -116,18 +132,27 @@ for s = 1:numel(shocknames)
         irfs = oo_.irfs;
 
         % Get the variable names for the current shock
-        varnames = fieldnames(irfs);
-        varnames = varnames(endsWith(varnames, ['_', shockname]));
+        endo_names_irfs = fieldnames(irfs);
+        endo_names_irfs = endo_names_irfs(endsWith(endo_names_irfs, ['_', shock_name]));
 
-        % Determine the number of variables
-        num_vars = numel(varnames);
+        % Determine the number of variables for which there are irfs
+        num_endo_irfs = size(endo_names_irfs,1);
+
+        % Get the long names for the endo variables for which there are
+        % irfs
+        for i = 1:num_endo_irfs
+            idx = strcmp(endo_names(:, 1), extractBefore(endo_names_irfs{i,1}, '_eps_'));
+            endo_names_irfs{i, 2} = endo_names{idx, 2};
+        end
+
+
 
         % Determine the number of rows and columns for subplot arrangement
-        num_rows = ceil(sqrt(num_vars));
-        num_cols = ceil(num_vars / num_rows);
+        num_rows = ceil(sqrt(num_endo_irfs));
+        num_cols = ceil(num_endo_irfs / num_rows);
 
         % Create a time vector for plotting
-        h = size(irfs.(varnames{1}), 2);
+        h = size(irfs.(endo_names_irfs{1}), 2);
         time = 0:h-1;
 
         % Adjust the vertical spacing between sgtitle and plots
@@ -137,9 +162,11 @@ for s = 1:numel(shocknames)
         end
 
         % Plot the IRFs in subplots
-        for i = 1:num_vars
-            varname = varnames{i};
-            varlongname = varlongnames{i};
+        for i = 1:num_endo_irfs
+            
+            varname = endo_names_irfs{i,1};
+            varlongname = endo_names_irfs{i,2};
+
             irf = irfs.(varname);
 
             subplot(num_rows, num_cols, i);
@@ -157,25 +184,25 @@ for s = 1:numel(shocknames)
     end
 
     % Add a title to the figure based on the current shock
-    sgtitle(['Impulse Responses to a ', shocklongname], 'FontWeight', 'bold', 'FontSize', 16);
+    sgtitle(['Impulse Responses to a ', shock_longname], 'FontWeight', 'bold', 'FontSize', 16);
 
     % Add a legend for the scenarios
     legend(suffix_names, 'Interpreter', 'none');
 
     % Save the figure as PNG file
-    saveas(gcf, ['figure', num2str(s), '.png']);
+    print(['figure_', original_name, shock_name], '-dpng', '-r300');
 end
 
 
 clc;
-close all;
+%close all;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Create LaTeX File %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Specify the filename for the LaTeX document
-latex_filename = 'results.tex';
+latex_filename = ['results_',original_name,'.tex'];
 
 % Open the LaTeX file for writing
 fid = fopen(latex_filename, 'w');
@@ -221,18 +248,18 @@ end
 fprintf(fid, '\\section{Impulse Responses}\n');
 
 % Write the IRF figures for each shock
-for s = 1:numel(shocknames)
-    shockname = shocknames{s};
-    shocklongname = shocklongnames{s};
-    shocktexname = shocktexnames{s};
-    figure_filename = ['figure', num2str(s), '.png'];
+for s = 1:size(shock_names,1)
+    shock_name = shock_names{s,1};
+    shock_longname = shock_names{s,2};
+    shock_texname = shock_names{s,3};
+    figure_filename = ['figure_', original_name, shock_name, '.png'];
 
-    fprintf(fid, '\\subsection{Impulse Responses to a %s $%s$}\n', shocklongname, shocktexname);
-    fprintf(fid, 'The figure below shows the impulse responses to a %s for each model variant:\n\n', shocklongname);
+    fprintf(fid, '\\subsection{Impulse Responses to a %s $%s$}\n', shock_longname, shock_texname);
+    fprintf(fid, 'The figure below shows the impulse responses to a %s for each model variant:\n\n', shock_longname);
     fprintf(fid, '\\begin{figure}[h!]\n');
     fprintf(fid, '\\centering\n');
     fprintf(fid, '\\includegraphics[width=1.2\\textwidth]{%s}\n', figure_filename);
-    fprintf(fid, '\\caption{Impulse Responses to $%s$}\n', shocktexname);
+    fprintf(fid, '\\caption{Impulse Responses to $%s$}\n', shock_texname);
     fprintf(fid, '\\end{figure}\n\n');
     fprintf(fid, '\\clearpage\n'); % Add a page break after each shock
 end
